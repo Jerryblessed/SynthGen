@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Logged Out{% endblock %}
+{% block content %}
+<div class='row justify-content-center'>
+    <div class='col-md-6'>
+        <div class='card'>
+            <div class='card-header bg-success text-white text-center'>
+                <h3>✅ Successfully Logged Out</h3>
+            </div>
+            <div class='card-body text-center'>
+                <p class='mb-4'>You can continue using the app as a guest or log back in.</p>
+                <div class='d-grid gap-2'>
+                    <a class='btn btn-primary' href="{{ url_for('generate') }}">Continue as Guest</a>
+                    <a class='btn btn-success' href="{{ url_for('login') }}">Log Back In</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

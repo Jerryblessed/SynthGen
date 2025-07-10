@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Agent Reply{% endblock %}
+{% block content %}
+<a class='btn btn-secondary mb-3' href="{{ url_for('generate') }}">⬅️ Back to Generator</a>
+<div class='alert alert-info'>
+    <strong>🧠 Agent Says:</strong><br>
+    {{ response }}
+</div>
+{% endblock %}

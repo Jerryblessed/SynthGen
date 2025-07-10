@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}My Data{% endblock %}
+{% block content %}
+<h2>📁 My Synthetic Data</h2>
+{% if error_message %}
+<div class='alert alert-danger'>
+    <strong>Error:</strong> {{ error_message }}
+</div>
+{% else %}
+<table class='table table-bordered table-striped'>
+    <thead class='table-dark'>
+        <tr>
+            <th>ID</th>
+            <th>Domain</th>
+            <th>Created At (UTC)</th>
+            <th>Download</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td><small>{{ item.SynteticData }}</small></td>
+            <td>{{ item.domain }}</td>
+            <td>{{ item.created_at }}</td>
+            <td><a class="btn btn-sm btn-primary" href="{{ url_for('download', rid=item.SynteticData) }}">CSV</a></td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" class="text-center">No data found. Go to the 'Generate' page to create some!</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

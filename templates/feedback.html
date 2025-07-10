@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Feedback{% endblock %}
+{% block content %}
+<h2>💬 Submit Feedback</h2>
+
+{% if is_guest %}
+<div class='alert alert-info'>
+    <strong>ℹ️ Guest Mode:</strong> Your feedback will be submitted anonymously. 
+    <a href="{{ url_for('login') }}" class='alert-link'>Login</a> to associate feedback with your account.
+</div>
+{% endif %}
+
+{% if error_message %}
+<div class='alert alert-danger'>
+    <strong>Error:</strong> {{ error_message }}
+</div>
+{% endif %}
+
+{% if thanks %}
+<div class='alert alert-success'>✅ Thank you for your feedback!</div>
+{% endif %}
+
+<form method='post'>
+    <div class='mb-3'><label for="category" class="form-label">🗂️ Category</label><select id="category" name='category' class='form-select'><option>General</option><option>health</option><option>finance</option><option>retail</option></select></div>
+    <div class='mb-3'><label for="feedback" class="form-label">📝 Feedback</label><textarea id="feedback" name='feedback' class='form-control' required rows="4"></textarea></div>
+    <button class='btn btn-primary'>Submit</button>
+</form>
+{% endblock %}
