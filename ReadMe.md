@@ -117,7 +117,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 ## 📽 Demo Video
 
-🎥 [Watch the demo](https://youtu.be/your-demo-video-link) (3 min)
+🎥 [Watch the demo](https://vimeo.com/1100504622?share=copy) (3 min)
 
 ---
 
