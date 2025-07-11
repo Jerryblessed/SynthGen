@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 # ====================
 # Flask App Setup
 # ====================
-app = Flask(__name__)
-app.secret_key = os.urandom(24)
+application = Flask(__name__)
+application.secret_key = os.urandom(24)
 
 # ====================
 # AWS Configuration
@@ -254,7 +254,7 @@ ai_agent = AIAgent(bedrock_runtime) if bedrock_runtime else None
 # ====================
 # OAuth Setup
 # ====================
-oauth = OAuth(app)
+oauth = OAuth(application)
 oauth.register(
     name='oidc',
     client_id=CLIENT_ID,
@@ -266,32 +266,32 @@ oauth.register(
 # ====================
 # Routes
 # ====================
-@app.route('/')
+@application.route('/')
 def home():
     return redirect(url_for('generate'))
 
 # -------- Authentication Routes --------
-@app.route('/login')
+@application.route('/login')
 def login():
     return oauth.oidc.authorize_redirect(redirect_uri="https://synthgen.eu-north-1.elasticbeanstalk.com/authorize")
 
-@app.route('/authorize')
+@application.route('/authorize')
 def authorize():
     token = oauth.oidc.authorize_access_token()
     session['user'] = token.get('userinfo', {})
     return redirect(url_for('generate'))
 
-@app.route('/logout')
+@application.route('/logout')
 def logout():
     session.pop('user', None)
     return redirect(url_for('logout_confirm'))
 
-@app.route('/logout_confirm')
+@application.route('/logout_confirm')
 def logout_confirm():
     return render_template('logout_confirm.html')
 
 # -------- Main Generation Route --------
-@app.route('/generate', methods=['GET', 'POST'])
+@application.route('/generate', methods=['GET', 'POST'])
 def generate():
     user = session.get('user')
     email = user.get('email') if user else 'guest@example.com'
@@ -381,7 +381,7 @@ def generate():
                          success_message=success_message)
 
 # -------- AI Agent Route --------
-@app.route('/agent', methods=['POST'])
+@application.route('/agent', methods=['POST'])
 def agent():
     query = request.form.get('query', '')
     context = request.form.get('context', '')
@@ -403,7 +403,7 @@ def agent():
     return render_template('agent.html', response=response, query=query)
 
 # -------- AJAX Agent Route for Real-time Assistance --------
-@app.route('/agent_ajax', methods=['POST'])
+@application.route('/agent_ajax', methods=['POST'])
 def agent_ajax():
     """AJAX endpoint for real-time agent assistance"""
     data = request.get_json()
@@ -418,7 +418,7 @@ def agent_ajax():
     return jsonify({'response': response})
 
 # -------- Data Management Routes --------
-@app.route('/view')
+@application.route('/view')
 def view():
     user = session.get('user')
     if not user:
@@ -441,7 +441,7 @@ def view():
             
     return render_template('view.html', user=user, items=items, error_message=error_message)
 
-@app.route('/download/<rid>')
+@application.route('/download/<rid>')
 def download(rid):
     if not synth_tbl:
         return 'Download service unavailable', 503
@@ -461,7 +461,7 @@ def download(rid):
         return 'Error downloading file', 500
 
 # -------- Feedback Route --------
-@app.route('/feedback', methods=['GET', 'POST'])
+@application.route('/feedback', methods=['GET', 'POST'])
 def feedback():
     user = session.get('user')
     is_guest = not user
@@ -495,7 +495,7 @@ def feedback():
                          error_message=error_message)
 
 # -------- Health Check Route --------
-@app.route('/health')
+@application.route('/health')
 def health():
     """Health check endpoint"""
     status = {
@@ -509,11 +509,11 @@ def health():
 # ====================
 # Error Handlers
 # ====================
-@app.errorhandler(404)
+@application.errorhandler(404)
 def not_found(error):
     return render_template('error.html', error="Page not found"), 404
 
-@app.errorhandler(500)
+@application.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {error}")
     return render_template('error.html', error="Internal server error"), 500
@@ -528,4 +528,4 @@ if __name__ == '__main__':
         logger.warning("DynamoDB not available - data won't be persisted")
     
     logger.info("Starting Flask application...")
-    app.run(debug=True, port=5001)
+    application.run(debug=True, port=5001)
