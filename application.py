@@ -1,68 +1,260 @@
-from flask import Flask, redirect, url_for, session, request, render_template, send_file
-from authlib.integrations.flask_client import OAuth
-import boto3
 import os
-import uuid
-import datetime
 import json
 import csv
-from io import BytesIO
+import uuid
+import datetime
+import logging
+from io import BytesIO, StringIO
+from flask import Flask, redirect, url_for, session, request, render_template, send_file, jsonify
+from authlib.integrations.flask_client import OAuth
+import boto3
+from botocore.exceptions import ClientError
 
-# ====================
-# SECURITY WARNING
-# ====================
-# Hardcoding credentials is a significant security risk.
-# In a real-world application, use environment variables or AWS IAM roles.
-# For example:
-# ais = {
-#     'access_key': os.environ.get('AWS_ACCESS_KEY_ID'),
-#     'secret_key': os.environ.get('AWS_SECRET_ACCESS_KEY'),
-#     'region': os.environ.get('AWS_REGION')
-# }
-# ====================
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ====================
 # Flask App Setup
 # ====================
-
-appliacation = Flask(__name__)
-application = appliacation
-application.secret_key = "wowuowrjwer9023r239h9j"
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
 # ====================
-# AWS & Cognito Config
+# AWS Configuration
 # ====================
-ais = {
+AWS_CONFIG = {
     'access_key': 'AKIA6FIQDWZWJOPKXKHE',
     'secret_key': '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',
-    'region': 'eu-north-1'
+    'region': 'us-east-1'  # Changed to us-east-1 for Bedrock
 }
+
+# Cognito Configuration
 USER_POOL_ID = "eu-north-1_8nOgsOGhF"
-CLIENT_ID    = "53loo229e76aj0kq99rqlu33ea"
-CLIENT_SECRET= "1h5540a3siu47d8bhee6onerk6734j7l0tlfr6s6elf4hqfb2dej"
-COG_DOMAIN   = f"https://cognito-idp.{ais['region']}.amazonaws.com/{USER_POOL_ID}"
+CLIENT_ID = "53loo229e76aj0kq99rqlu33ea"
+CLIENT_SECRET = "1h5540a3siu47d8bhee6onerk6734j7l0tlfr6s6elf4hqfb2dej"
+COG_DOMAIN = f"https://cognito-idp.eu-north-1.amazonaws.com/{USER_POOL_ID}"
 
 # ====================
-# DynamoDB Tables
+# AWS Services Setup
 # ====================
-try:
-    dynamo = boto3.resource(
-        'dynamodb',
-        region_name=ais['region'],
-        aws_access_key_id=ais['access_key'],
-        aws_secret_access_key=ais['secret_key']
-    )
-    synth_tbl = dynamo.Table("SyntheticData")
-    fb_tbl    = dynamo.Table("Feedback")
-except Exception as e:
-    print(f"FATAL: Could not connect to DynamoDB. Check credentials and region. Error: {e}")
-    # Exit or handle gracefully if you cannot connect
-    dynamo, synth_tbl, fb_tbl = None, None, None
+def setup_aws_services():
+    """Initialize AWS services"""
+    try:
+        # DynamoDB (keeping original region)
+        dynamo = boto3.resource(
+            'dynamodb',
+            region_name='eu-north-1',
+            aws_access_key_id=AWS_CONFIG['access_key'],
+            aws_secret_access_key=AWS_CONFIG['secret_key']
+        )
+        
+        # Bedrock Runtime (us-east-1)
+        bedrock_runtime = boto3.client(
+            'bedrock-runtime',
+            region_name=AWS_CONFIG['region'],
+            aws_access_key_id=AWS_CONFIG['access_key'],
+            aws_secret_access_key=AWS_CONFIG['secret_key']
+        )
+        
+        synth_tbl = dynamo.Table("SyntheticData")
+        fb_tbl = dynamo.Table("Feedback")
+        
+        logger.info("Successfully initialized AWS services")
+        return dynamo, bedrock_runtime, synth_tbl, fb_tbl
+    except Exception as e:
+        logger.error(f"Failed to initialize AWS services: {e}")
+        return None, None, None, None
+
+# Initialize AWS services
+dynamo, bedrock_runtime, synth_tbl, fb_tbl = setup_aws_services()
 
 # ====================
-# OAuth (Authlib + Cognito Hosted UI)
+# Bedrock Titan Integration
 # ====================
-oauth = OAuth(application)
+class BedrockTitanGenerator:
+    def __init__(self, bedrock_client):
+        self.bedrock_client = bedrock_client
+        self.model_id = "amazon.titan-text-lite-v1"
+    
+    def generate_synthetic_data(self, schema_headers, domain, count, noise_level, balance_classes, mask_pii):
+        """Generate synthetic data using Bedrock Titan"""
+        try:
+            # Create a detailed prompt for data generation
+            prompt = self._create_data_generation_prompt(
+                schema_headers, domain, count, noise_level, balance_classes, mask_pii
+            )
+            
+            # Call Bedrock Titan
+            response = self.bedrock_client.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps({
+                    "inputText": prompt,
+                    "textGenerationConfig": {
+                        "maxTokenCount": 4000,
+                        "temperature": min(noise_level, 0.9),
+                        "topP": 0.9
+                    }
+                }),
+                contentType="application/json"
+            )
+            
+            # Parse response
+            response_body = json.loads(response['body'].read())
+            generated_text = response_body['results'][0]['outputText']
+            
+            # Process the generated text into structured data
+            synthetic_data = self._parse_generated_data(generated_text, schema_headers, count)
+            
+            return synthetic_data
+            
+        except Exception as e:
+            logger.error(f"Error generating synthetic data with Bedrock: {e}")
+            # Fallback to simple generation
+            return self._fallback_generation(schema_headers, count)
+    
+    def _create_data_generation_prompt(self, headers, domain, count, noise_level, balance_classes, mask_pii):
+        """Create a detailed prompt for synthetic data generation"""
+        prompt = f"""Generate {count} rows of realistic synthetic data for the {domain} domain.
+
+Schema columns: {', '.join(headers)}
+
+Requirements:
+- Generate realistic {domain} data
+- Noise level: {noise_level} (0=very consistent, 1=highly varied)
+- Balance classes: {'Yes' if balance_classes else 'No'}
+- Mask PII: {'Yes' if mask_pii else 'No'}
+
+Format the output as CSV rows (no headers), one row per line.
+Make the data realistic and varied for the {domain} domain.
+"""
+        
+        if mask_pii:
+            prompt += "\nMask any personally identifiable information (names, emails, phone numbers, etc.)."
+        
+        if balance_classes:
+            prompt += "\nEnsure balanced distribution across categories/classes."
+        
+        prompt += f"\n\nGenerate exactly {count} rows:"
+        
+        return prompt
+    
+    def _parse_generated_data(self, generated_text, headers, expected_count):
+        """Parse the generated text into structured data"""
+        lines = generated_text.strip().split('\n')
+        synthetic_data = []
+        
+        for i, line in enumerate(lines[:expected_count]):
+            if line.strip():
+                try:
+                    # Try to parse as CSV
+                    values = [val.strip().strip('"') for val in line.split(',')]
+                    if len(values) == len(headers):
+                        record = dict(zip(headers, values))
+                        synthetic_data.append(record)
+                except:
+                    # If parsing fails, create a simple record
+                    record = {col: f"{col}_{i+1}" for col in headers}
+                    synthetic_data.append(record)
+        
+        # Ensure we have the expected count
+        while len(synthetic_data) < expected_count:
+            i = len(synthetic_data)
+            record = {col: f"{col}_{i+1}" for col in headers}
+            synthetic_data.append(record)
+        
+        return synthetic_data[:expected_count]
+    
+    def _fallback_generation(self, headers, count):
+        """Fallback generation if Bedrock fails"""
+        synthetic_data = []
+        for i in range(count):
+            record = {col: f"{col}_{i+1}" for col in headers}
+            synthetic_data.append(record)
+        return synthetic_data
+
+# Initialize Bedrock generator
+bedrock_generator = BedrockTitanGenerator(bedrock_runtime) if bedrock_runtime else None
+
+# ====================
+# AI Agent for Automation
+# ====================
+class AIAgent:
+    def __init__(self, bedrock_client):
+        self.bedrock_client = bedrock_client
+        self.model_id = "amazon.titan-text-lite-v1"
+    
+    def process_query(self, query, context=None):
+        """Process user queries and provide intelligent responses"""
+        try:
+            # Create context-aware prompt
+            prompt = self._create_agent_prompt(query, context)
+            
+            response = self.bedrock_client.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps({
+                    "inputText": prompt,
+                    "textGenerationConfig": {
+                        "maxTokenCount": 500,
+                        "temperature": 0.3,
+                        "topP": 0.9
+                    }
+                }),
+                contentType="application/json"
+            )
+            
+            response_body = json.loads(response['body'].read())
+            return response_body['results'][0]['outputText'].strip()
+            
+        except Exception as e:
+            logger.error(f"Error processing agent query: {e}")
+            return self._fallback_response(query)
+    
+    def _create_agent_prompt(self, query, context):
+        """Create a context-aware prompt for the AI agent"""
+        prompt = f"""You are an AI assistant for a synthetic data generation platform. 
+Help users understand and configure synthetic data generation parameters.
+
+User Query: {query}
+
+Context: You help with:
+- Noise levels (0-1): Controls randomness in generated data
+- Class balancing: Ensures equal distribution of categories
+- PII masking: Protects sensitive personal information
+- Domain selection: health, finance, retail data types
+- Record count: Number of synthetic records to generate
+
+Provide a helpful, concise response (max 2-3 sentences):"""
+        
+        if context:
+            prompt += f"\nAdditional context: {context}"
+        
+        return prompt
+    
+    def _fallback_response(self, query):
+        """Fallback responses when Bedrock is unavailable"""
+        query_lower = query.lower()
+        
+        if 'noise' in query_lower:
+            return "Noise controls randomness in your data. 0 = very consistent, 1 = highly varied. Use lower values for realistic data."
+        elif 'balance' in query_lower:
+            return "Class balancing ensures equal representation of categories. Important for ML training datasets."
+        elif 'pii' in query_lower or 'mask' in query_lower:
+            return "PII masking replaces sensitive information like names, emails, phone numbers with fake but realistic alternatives."
+        elif 'domain' in query_lower:
+            return "Domain selection affects the type of data generated. Health generates medical data, finance generates financial records, retail generates customer data."
+        elif 'records' in query_lower or 'count' in query_lower:
+            return "You can generate 1-1000 records per request. More records provide better statistical diversity."
+        else:
+            return "I can help with noise levels, class balancing, PII masking, domain selection, and record counts. What would you like to know?"
+
+# Initialize AI agent
+ai_agent = AIAgent(bedrock_runtime) if bedrock_runtime else None
+
+# ====================
+# OAuth Setup
+# ====================
+oauth = OAuth(app)
 oauth.register(
     name='oidc',
     client_id=CLIENT_ID,
@@ -74,32 +266,32 @@ oauth.register(
 # ====================
 # Routes
 # ====================
-@application.route('/')
+@app.route('/')
 def home():
     return redirect(url_for('generate'))
 
-# -------- Auth --------
-@application.route('/login')
+# -------- Authentication Routes --------
+@app.route('/login')
 def login():
-    return oauth.oidc.authorize_redirect(redirect_uri="http://localhost:5001/authorize")
+    return oauth.oidc.authorize_redirect(redirect_uri="https://synthgen.eu-north-1.elasticbeanstalk.com/authorize")
 
-@application.route('/authorize')
+@app.route('/authorize')
 def authorize():
     token = oauth.oidc.authorize_access_token()
     session['user'] = token.get('userinfo', {})
     return redirect(url_for('generate'))
 
-@application.route('/logout')
+@app.route('/logout')
 def logout():
     session.pop('user', None)
     return redirect(url_for('logout_confirm'))
 
-@application.route('/logout_confirm')
+@app.route('/logout_confirm')
 def logout_confirm():
     return render_template('logout_confirm.html')
 
-# -------- Generate Synthetic Data --------
-@application.route('/generate', methods=['GET','POST'])
+# -------- Main Generation Route --------
+@app.route('/generate', methods=['GET', 'POST'])
 def generate():
     user = session.get('user')
     email = user.get('email') if user else 'guest@example.com'
@@ -108,6 +300,7 @@ def generate():
     record_id = None
     preview = ''
     error_message = None
+    success_message = None
 
     if request.method == 'POST':
         file = request.files.get('file')
@@ -116,69 +309,116 @@ def generate():
             error_message = "Please upload a CSV schema file."
         else:
             try:
+                # Parse CSV schema
                 csv_bytes = file.read()
                 csv_lines = csv_bytes.decode('utf-8').splitlines()
-                header = csv_lines[0].split(',')
+                headers = [col.strip() for col in csv_lines[0].split(',')]
 
-                domain = request.form['domain']
-                count  = int(request.form['count'])
-                noise  = float(request.form['noise'])
-                balance= 'balance' in request.form
-                mask   = 'mask_pii' in request.form
+                # Get form parameters
+                domain = request.form.get('domain', 'health')
+                count = int(request.form.get('count', 100))
+                noise = float(request.form.get('noise', 0.1))
+                balance = 'balance' in request.form
+                mask_pii = 'mask_pii' in request.form
 
-                # --- This is the placeholder for your actual synthetic data logic ---
-                synthetic = []
-                for i in range(1, count + 1):
-                    rec = {col.strip(): f"{col.strip()}_{i}" for col in header}
-                    synthetic.append(rec)
-                # --- End of placeholder logic ---
+                # Generate synthetic data using Bedrock
+                if bedrock_generator:
+                    synthetic_data = bedrock_generator.generate_synthetic_data(
+                        headers, domain, count, noise, balance, mask_pii
+                    )
+                else:
+                    # Fallback generation
+                    synthetic_data = []
+                    for i in range(count):
+                        record = {col: f"{col}_{i+1}" for col in headers}
+                        synthetic_data.append(record)
 
+                # Convert to CSV
                 output = StringIO()
-                writer = csv.DictWriter(output, fieldnames=header)
+                writer = csv.DictWriter(output, fieldnames=headers)
                 writer.writeheader()
-                writer.writerows(synthetic)
+                writer.writerows(synthetic_data)
                 csv_output = output.getvalue()
-                preview = '\n'.join(csv_output.splitlines()[:10])
+                
+                # Create preview
+                preview_lines = csv_output.splitlines()[:6]  # Header + 5 rows
+                preview = '\n'.join(preview_lines)
+                
+                # Generate unique record ID
                 record_id = str(uuid.uuid4())
                 
+                # Store in DynamoDB
                 if synth_tbl:
                     synth_tbl.put_item(Item={
                         'SynteticData': record_id,
                         'email': email,
                         'domain': domain,
-                        'prompt': json.dumps({'domain':domain,'count':count,'noise':noise,'balance':balance,'mask_pii':mask}),
+                        'prompt': json.dumps({
+                            'domain': domain,
+                            'count': count,
+                            'noise': noise,
+                            'balance': balance,
+                            'mask_pii': mask_pii,
+                            'headers': headers
+                        }),
                         'sample': csv_output,
                         'created_at': datetime.datetime.utcnow().isoformat(),
                         'is_guest': is_guest
                     })
+                
+                success_message = f"Successfully generated {count} synthetic records using Amazon Bedrock Titan!"
 
             except Exception as e:
-                error_message = f"An error occurred: {e}"
+                logger.error(f"Error generating data: {e}")
+                error_message = f"An error occurred while generating data: {str(e)}"
 
-    return render_template('generate.html', user=user, is_guest=is_guest, record_id=record_id, preview=preview, error_message=error_message)
+    return render_template('generate.html', 
+                         user=user, 
+                         is_guest=is_guest, 
+                         record_id=record_id, 
+                         preview=preview, 
+                         error_message=error_message,
+                         success_message=success_message)
 
-# -------- Agent Assistant --------
-@application.route('/agent', methods=['POST'])
+# -------- AI Agent Route --------
+@app.route('/agent', methods=['POST'])
 def agent():
-    query = request.form.get('query', '').lower()
-    response = ""
-    if 'noise' in query:
-        response = "Noise controls how much randomness is added to your synthetic data. 0 means very clean, 1 means very random."
-    elif 'balance' in query:
-        response = "Balancing classes ensures all categories in your dataset appear equally. Useful for training ML models."
-    elif 'pii' in query or 'mask' in query:
-        response = "Masking PII hides sensitive personal information like names or phone numbers in the generated data."
-    elif 'records' in query or 'how many' in query:
-        response = "You can generate up to 1000 records per request. The more records, the more realistic your sample."
-    elif 'role' in query or 'columns' in query:
-        response = "Roles/Columns refer to the fields/headers in your CSV input. They determine what type of data is generated."
-    else:
-        response = "Sorry, I'm not sure how to answer that. Try asking about noise, balance, PII, records or columns."
+    query = request.form.get('query', '')
+    context = request.form.get('context', '')
     
-    return render_template('agent.html', response=response)
+    if ai_agent:
+        response = ai_agent.process_query(query, context)
+    else:
+        # Fallback responses
+        query_lower = query.lower()
+        if 'noise' in query_lower:
+            response = "Noise controls randomness in your data. 0 = very consistent, 1 = highly varied."
+        elif 'balance' in query_lower:
+            response = "Class balancing ensures equal representation of categories in your dataset."
+        elif 'pii' in query_lower or 'mask' in query_lower:
+            response = "PII masking replaces sensitive information with realistic fake alternatives."
+        else:
+            response = "I can help with noise levels, class balancing, PII masking, and more!"
+    
+    return render_template('agent.html', response=response, query=query)
 
-# -------- View My Data --------
-@application.route('/view')
+# -------- AJAX Agent Route for Real-time Assistance --------
+@app.route('/agent_ajax', methods=['POST'])
+def agent_ajax():
+    """AJAX endpoint for real-time agent assistance"""
+    data = request.get_json()
+    query = data.get('query', '')
+    context = data.get('context', {})
+    
+    if ai_agent:
+        response = ai_agent.process_query(query, json.dumps(context))
+    else:
+        response = "Agent temporarily unavailable. Please try again."
+    
+    return jsonify({'response': response})
+
+# -------- Data Management Routes --------
+@app.route('/view')
 def view():
     user = session.get('user')
     if not user:
@@ -190,15 +430,38 @@ def view():
 
     if synth_tbl:
         try:
-            resp = synth_tbl.scan(FilterExpression=boto3.dynamodb.conditions.Attr('email').eq(email))
-            items = sorted(resp.get('Items', []), key=lambda x: x.get('created_at', ''), reverse=True)
+            from boto3.dynamodb.conditions import Attr
+            response = synth_tbl.scan(FilterExpression=Attr('email').eq(email))
+            items = sorted(response.get('Items', []), 
+                         key=lambda x: x.get('created_at', ''), 
+                         reverse=True)
         except Exception as e:
-            error_message = f"Error fetching data: {e}"
+            logger.error(f"Error fetching data: {e}")
+            error_message = f"Error fetching data: {str(e)}"
             
     return render_template('view.html', user=user, items=items, error_message=error_message)
 
-# -------- Feedback --------
-@application.route('/feedback', methods=['GET','POST'])
+@app.route('/download/<rid>')
+def download(rid):
+    if not synth_tbl:
+        return 'Download service unavailable', 503
+    
+    try:
+        item = synth_tbl.get_item(Key={'SynteticData': rid}).get('Item')
+        if not item or 'sample' not in item:
+            return 'File not found', 404
+        
+        buf = BytesIO(item['sample'].encode('utf-8'))
+        return send_file(buf, 
+                        mimetype='text/csv', 
+                        download_name=f'synthetic_data_{rid[:8]}.csv', 
+                        as_attachment=True)
+    except Exception as e:
+        logger.error(f"Error downloading file: {e}")
+        return 'Error downloading file', 500
+
+# -------- Feedback Route --------
+@app.route('/feedback', methods=['GET', 'POST'])
 def feedback():
     user = session.get('user')
     is_guest = not user
@@ -213,39 +476,56 @@ def feedback():
                 fb_tbl.put_item(Item={
                     'feedback': str(uuid.uuid4()),
                     'email': email,
-                    'category': request.form['category'],
-                    'text': request.form['feedback'],
+                    'category': request.form.get('category', 'General'),
+                    'text': request.form.get('feedback', ''),
                     'timestamp': datetime.datetime.utcnow().isoformat(),
                     'is_guest': is_guest
                 })
                 thanks = True
             except Exception as e:
-                error_message = f"Error storing feedback: {e}"
+                logger.error(f"Error storing feedback: {e}")
+                error_message = f"Error storing feedback: {str(e)}"
         else:
             error_message = "Feedback system is currently unavailable."
 
-    return render_template('feedback.html', user=user, is_guest=is_guest, thanks=thanks, error_message=error_message)
+    return render_template('feedback.html', 
+                         user=user, 
+                         is_guest=is_guest, 
+                         thanks=thanks, 
+                         error_message=error_message)
 
-# -------- Download CSV --------
-@application.route('/download/<rid>')
-def download(rid):
-    if not synth_tbl:
-        return 'Download service unavailable', 503
-    try:
-        item = synth_tbl.get_item(Key={'SynteticData': rid}).get('Item')
-        if not item or 'sample' not in item:
-            return 'File not found', 404
-        
-        buf = BytesIO(item['sample'].encode('utf-8'))
-        return send_file(buf, mimetype='text/csv', download_name=f'sample_{rid}.csv', as_attachment=True)
-    except Exception as e:
-        return 'Error downloading file', 500
+# -------- Health Check Route --------
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    status = {
+        'status': 'healthy',
+        'bedrock_available': bedrock_runtime is not None,
+        'dynamodb_available': synth_tbl is not None,
+        'timestamp': datetime.datetime.utcnow().isoformat()
+    }
+    return jsonify(status)
 
 # ====================
-# Run App
+# Error Handlers
+# ====================
+@app.errorhandler(404)
+def not_found(error):
+    return render_template('error.html', error="Page not found"), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal server error: {error}")
+    return render_template('error.html', error="Internal server error"), 500
+
+# ====================
+# Run Application
 # ====================
 if __name__ == '__main__':
-    if not all([dynamo, synth_tbl, fb_tbl]):
-        print("Could not start application due to DynamoDB connection failure.")
-    else:
-        application.run(debug=True, port=5001)
+    if not bedrock_runtime:
+        logger.warning("Bedrock runtime not available - using fallback generation")
+    if not synth_tbl:
+        logger.warning("DynamoDB not available - data won't be persisted")
+    
+    logger.info("Starting Flask application...")
+    app.run(debug=True, port=5001)

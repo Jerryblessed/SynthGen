@@ -1,17 +1,18 @@
+<!-- logout_confirm.html -->
 {% extends "base.html" %}
 {% block title %}Logged Out{% endblock %}
 {% block content %}
 <div class='row justify-content-center'>
     <div class='col-md-6'>
         <div class='card'>
-            <div class='card-header bg-success text-white text-center'>
+            <div class='card-header text-center' style="background: linear-gradient(45deg, #28a745, #20c997); color: white;">
                 <h3>✅ Successfully Logged Out</h3>
             </div>
             <div class='card-body text-center'>
-                <p class='mb-4'>You can continue using the app as a guest or log back in.</p>
+                <p class='mb-4'>You can continue using the Amazon Bedrock-powered synthetic data generator as a guest or log back in to save your data.</p>
                 <div class='d-grid gap-2'>
-                    <a class='btn btn-primary' href="{{ url_for('generate') }}">Continue as Guest</a>
-                    <a class='btn btn-success' href="{{ url_for('login') }}">Log Back In</a>
+                    <a class='btn btn-primary btn-lg' href="{{ url_for('generate') }}">Continue as Guest</a>
+                    <a class='btn btn-success btn-lg' href="{{ url_for('login') }}">Log Back In</a>
                 </div>
             </div>
         </div>

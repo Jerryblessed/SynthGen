@@ -1,28 +1,61 @@
+<!-- feedback.html -->
 {% extends "base.html" %}
 {% block title %}Feedback{% endblock %}
 {% block content %}
-<h2>💬 Submit Feedback</h2>
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(45deg, #667eea, #764ba2); color: white;">
+                <h3 class="mb-0">💬 Submit Feedback</h3>
+            </div>
+            <div class="card-body">
+                {% if is_guest %}
+                <div class='alert alert-info' style="border-radius: 15px;">
+                    <strong>ℹ️ Guest Mode:</strong> Your feedback will be submitted anonymously. 
+                    <a href="{{ url_for('login') }}" class='alert-link'>Login</a> to associate feedback with your account.
+                </div>
+                {% endif %}
 
-{% if is_guest %}
-<div class='alert alert-info'>
-    <strong>ℹ️ Guest Mode:</strong> Your feedback will be submitted anonymously. 
-    <a href="{{ url_for('login') }}" class='alert-link'>Login</a> to associate feedback with your account.
+                {% if error_message %}
+                <div class='alert alert-danger' style="border-radius: 15px;">
+                    <strong>❌ Error:</strong> {{ error_message }}
+                </div>
+                {% endif %}
+
+                {% if thanks %}
+                <div class='alert alert-success' style="border-radius: 15px;">
+                    <h5>✅ Thank you for your feedback!</h5>
+                    <p>Your input helps us improve the Amazon Bedrock integration and overall user experience.</p>
+                    <a href="{{ url_for('generate') }}" class="btn btn-success">Generate More Data</a>
+                </div>
+                {% else %}
+                <form method='post'>
+                    <div class='mb-3'>
+                        <label for="category" class="form-label">🗂️ Category</label>
+                        <select id="category" name='category' class='form-select'>
+                            <option value="General">General Feedback</option>
+                            <option value="Bedrock">Amazon Bedrock Integration</option>
+                            <option value="Data Quality">Data Quality</option>
+                            <option value="UI/UX">User Interface</option>
+                            <option value="Performance">Performance</option>
+                            <option value="Bug Report">Bug Report</option>
+                            <option value="Feature Request">Feature Request</option>
+                        </select>
+                    </div>
+                    
+                    <div class='mb-3'>
+                        <label for="feedback" class="form-label">📝 Your Feedback</label>
+                        <textarea id="feedback" name='feedback' class='form-control' required rows="5" 
+                                  placeholder="Please share your thoughts about the synthetic data generation, AI agent, or any suggestions for improvement..."></textarea>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class='btn btn-gradient btn-lg'>Submit Feedback</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
-{% endif %}
-
-{% if error_message %}
-<div class='alert alert-danger'>
-    <strong>Error:</strong> {{ error_message }}
-</div>
-{% endif %}
-
-{% if thanks %}
-<div class='alert alert-success'>✅ Thank you for your feedback!</div>
-{% endif %}
-
-<form method='post'>
-    <div class='mb-3'><label for="category" class="form-label">🗂️ Category</label><select id="category" name='category' class='form-select'><option>General</option><option>health</option><option>finance</option><option>retail</option></select></div>
-    <div class='mb-3'><label for="feedback" class="form-label">📝 Feedback</label><textarea id="feedback" name='feedback' class='form-control' required rows="4"></textarea></div>
-    <button class='btn btn-primary'>Submit</button>
-</form>
 {% endblock %}

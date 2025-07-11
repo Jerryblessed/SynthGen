@@ -1,60 +1,162 @@
+<!-- generate.html -->
 {% extends "base.html" %}
-{% block title %}Generate Data{% endblock %}
+{% block title %}Generate Data - Bedrock AI{% endblock %}
 {% block content %}
 
 {% if is_guest %}
-<div class='alert alert-info'>
-    <strong>ℹ️ Guest Mode:</strong> You're using the app as a guest. 
+<div class='alert alert-info' style="border-radius: 15px; border: none;">
+    <strong>🔮 Guest Mode:</strong> You're using the app as a guest. 
     <a href="{{ url_for('login') }}" class='alert-link'>Login</a> to save and view your generated data permanently.
 </div>
 {% endif %}
 
 {% if error_message %}
-<div class='alert alert-danger'>
-    <strong>Error:</strong> {{ error_message }}
+<div class='alert alert-danger' style="border-radius: 15px; border: none;">
+    <strong>❌ Error:</strong> {{ error_message }}
+</div>
+{% endif %}
+
+{% if success_message %}
+<div class='alert alert-success' style="border-radius: 15px; border: none;">
+    <strong>✅ Success:</strong> {{ success_message }}
 </div>
 {% endif %}
 
 <div class='row'>
-    <div class='col-md-8'>
-        <h2>🧪 Generate Synthetic Data</h2>
-        <form method='post' enctype='multipart/form-data'>
-            <div class='mb-3'><label for="file" class="form-label">📄 CSV Schema (Header only)</label><input type='file' id="file" name='file' class='form-control' required></div>
-            <div class='mb-3'><label for="domain" class="form-label">📊 Domain</label><select id="domain" name='domain' class='form-select'><option>health</option><option>finance</option><option>retail</option></select></div>
-            <div class='mb-3'><label for="cs" class="form-label">🔢 Records: <span id='c'>100</span></label><input type='range' id='cs' name='count' min='1' max='1000' value='100' class='form-range'></div>
-            <div class='mb-3'><label for="ns" class="form-label">🎲 Noise: <span id='n'>0.1</span></label><input type='range' id='ns' name='noise' min='0' max='1' step='0.01' value='0.1' class='form-range'></div>
-            <div class='form-check mb-3'><input class='form-check-input' type='checkbox' name='balance' id="balance"><label class='form-check-label' for="balance">⚖️ Balance Classes</label></div>
-            <div class='form-check mb-3'><input class='form-check-input' type='checkbox' name='mask_pii' id="mask_pii"><label class='form-check-label' for="mask_pii">🔒 Mask PII</label></div>
-            <button class='btn btn-success'>🚀 Generate</button>
-        </form>
+    <div class='col-lg-8'>
+        <div class="card">
+            <div class="card-header" style="background: linear-gradient(45deg, #667eea, #764ba2); color: white; border-radius: 15px 15px 0 0;">
+                <h3 class="mb-0">🧪 Generate Synthetic Data with Amazon Bedrock</h3>
+                <small>Powered by Titan Text G1-Lite in us-east-1</small>
+            </div>
+            <div class="card-body">
+                <form method='post' enctype='multipart/form-data' id="dataForm">
+                    <div class='mb-4'>
+                        <label for="file" class="form-label">📄 CSV Schema File</label>
+                        <input type='file' id="file" name='file' class='form-control' accept=".csv" required>
+                        <div class="form-text">Upload a CSV file with column headers to define your data schema</div>
+                    </div>
+                    
+                    <div class='row'>
+                        <div class='col-md-6'>
+                            <div class='mb-3'>
+                                <label for="domain" class="form-label">📊 Domain</label>
+                                <select id="domain" name='domain' class='form-select' onchange="updateDomainInfo()">
+                                    <option value="health">🏥 Health & Medical</option>
+                                    <option value="finance">💰 Finance & Banking</option>
+                                    <option value="retail">🛒 Retail & E-commerce</option>
+                                </select>
+                                <div id="domainInfo" class="form-text"></div>
+                            </div>
+                        </div>
+                        <div class='col-md-6'>
+                            <div class='mb-3'>
+                                <label for="count" class="form-label">🔢 Records: <span id='countDisplay'>100</span></label>
+                                <input type='range' id='count' name='count' min='1' max='1000' value='100' class='form-range' oninput="updateCount()">
+                                <div class="form-text">Number of synthetic records to generate</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class='row'>
+                        <div class='col-md-6'>
+                            <div class='mb-3'>
+                                <label for="noise" class="form-label">🎲 Noise Level: <span id='noiseDisplay'>0.1</span></label>
+                                <input type='range' id='noise' name='noise' min='0' max='1' step='0.01' value='0.1' class='form-range' oninput="updateNoise()">
+                                <div class="form-text">Controls data variability (0=consistent, 1=highly varied)</div>
+                            </div>
+                        </div>
+                        <div class='col-md-6'>
+                            <div class='mb-3'>
+                                <label class="form-label">🎯 Data Options</label>
+                                <div class='form-check'>
+                                    <input class='form-check-input' type='checkbox' name='balance' id="balance">
+                                    <label class='form-check-label' for="balance">⚖️ Balance Classes</label>
+                                </div>
+                                <div class='form-check'>
+                                    <input class='form-check-input' type='checkbox' name='mask_pii' id="mask_pii">
+                                    <label class='form-check-label' for="mask_pii">🔒 Mask PII</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class='btn btn-gradient btn-lg pulse-animation' id="generateBtn">
+                            🚀 Generate with Amazon Bedrock
+                        </button>
+                    </div>
+                </form>
 
-        {% if record_id %}
-        <hr>
-        <div class="alert alert-success">
-            Data generated successfully! <a class='btn btn-primary btn-sm' href="{{ url_for('download', rid=record_id) }}">⬇️ Download Full CSV</a>
+                {% if record_id %}
+                <hr class="my-4">
+                <div class="alert alert-success" style="border-radius: 15px; border: none;">
+                    <h5>🎉 Data Generated Successfully!</h5>
+                    <p>Your synthetic data has been generated using Amazon Bedrock Titan Text G1-Lite.</p>
+                    <a class='btn btn-primary' href="{{ url_for('download', rid=record_id) }}">⬇️ Download Full CSV</a>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5>📊 Data Preview</h5>
+                    </div>
+                    <div class="card-body">
+                        <pre class='bg-light p-3' style="border-radius: 10px; font-size: 0.9rem;"><code>{{ preview }}</code></pre>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
         </div>
-        <h4>Preview:</h4>
-        <pre class='mt-3 bg-light p-2 border rounded'><code>{{ preview }}</code></pre>
-        {% endif %}
-        
     </div>
 
-    <div class='col-md-4'>
-        <div class='card'>
-            <div class='card-header bg-info text-white'>🧠 AI Agent Assistant</div>
-            <div class='card-body'>
-                <p>Having trouble? Ask the agent for help.</p>
-                <form action="{{ url_for('agent') }}" method='post'>
-                    <label for="agent_query">Ask Anything:</label>
-                    <textarea id="agent_query" name='query' class='form-control mb-2' required></textarea>
-                    <button class='btn btn-outline-primary w-100'>Ask Agent</button>
-                </form>
-                <div class='mt-3'><strong>❓ Examples:</strong>
-                    <ul class='small'>
-                        <li>Generate 100 finance records</li>
-                        <li>What does noise mean?</li>
-                        <li>How to mask PII?</li>
-                    </ul>
+    <div class='col-lg-4'>
+        <div class='ai-agent-panel'>
+            <div class="d-flex align-items-center mb-3">
+                <h5 class="mb-0">🤖 AI Assistant</h5>
+                <div class="ms-auto">
+                    <span class="badge bg-success">Bedrock Powered</span>
+                </div>
+            </div>
+            
+            <div id="chatContainer" style="max-height: 300px; overflow-y: auto; margin-bottom: 1rem;">
+                <div class="chat-bubble">
+                    <small><strong>AI:</strong> Hi! I'm your AI assistant powered by Amazon Bedrock. I can help you optimize your synthetic data generation. What would you like to know?</small>
+                </div>
+            </div>
+            
+            <div class="input-group">
+                <input type="text" id="agentInput" class="form-control" placeholder="Ask me anything..." style="border-radius: 10px 0 0 10px;">
+                <button class="btn btn-light" type="button" onclick="sendMessage()" style="border-radius: 0 10px 10px 0;">Send</button>
+            </div>
+            
+            <div class="mt-3">
+                <small><strong>💡 Quick Questions:</strong></small>
+                <div class="mt-2">
+                    <button class="btn btn-outline-light btn-sm me-1 mb-1" onclick="askQuestion('What noise level should I use for financial data?')">Noise Level</button>
+                    <button class="btn btn-outline-light btn-sm me-1 mb-1" onclick="askQuestion('How does PII masking work?')">PII Masking</button>
+                    <button class="btn btn-outline-light btn-sm me-1 mb-1" onclick="askQuestion('What is class balancing?')">Class Balance</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6>📈 Generation Stats</h6>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="h4 text-primary">{{ session.get('total_generated', 0) }}</div>
+                        <small>Total Records</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="h4 text-success">{{ session.get('sessions_count', 0) }}</div>
+                        <small>Sessions</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="h4 text-info">3</div>
+                        <small>Domains</small>
+                    </div>
                 </div>
             </div>
         </div>
@@ -62,7 +164,101 @@
 </div>
 
 <script>
-    document.getElementById('cs').oninput = e => document.getElementById('c').innerText = e.target.value;
-    document.getElementById('ns').oninput = e => document.getElementById('n').innerText = e.target.value;
+    // Form control updates
+    function updateCount() {
+        document.getElementById('countDisplay').textContent = document.getElementById('count').value;
+    }
+    
+    function updateNoise() {
+        document.getElementById('noiseDisplay').textContent = document.getElementById('noise').value;
+    }
+    
+    function updateDomainInfo() {
+        const domain = document.getElementById('domain').value;
+        const info = document.getElementById('domainInfo');
+        const descriptions = {
+            'health': 'Generate medical records, patient data, clinical trials',
+            'finance': 'Generate transaction records, customer accounts, financial metrics',
+            'retail': 'Generate customer data, product catalogs, sales transactions'
+        };
+        info.textContent = descriptions[domain] || '';
+    }
+    
+    // AI Agent Chat
+    async function sendMessage() {
+        const input = document.getElementById('agentInput');
+        const message = input.value.trim();
+        if (!message) return;
+        
+        // Add user message to chat
+        addChatMessage('You', message, 'user');
+        input.value = '';
+        
+        // Get form context
+        const context = {
+            domain: document.getElementById('domain').value,
+            count: document.getElementById('count').value,
+            noise: document.getElementById('noise').value,
+            balance: document.getElementById('balance').checked,
+            mask_pii: document.getElementById('mask_pii').checked
+        };
+        
+        // Show typing indicator
+        addChatMessage('AI', 'Thinking...', 'ai', true);
+        
+        try {
+            const response = await sendAgentQuery(message, context);
+            // Remove typing indicator
+            removeTypingIndicator();
+            addChatMessage('AI', response, 'ai');
+        } catch (error) {
+            removeTypingIndicator();
+            addChatMessage('AI', 'Sorry, I encountered an error. Please try again.', 'ai');
+        }
+    }
+    
+    function askQuestion(question) {
+        document.getElementById('agentInput').value = question;
+        sendMessage();
+    }
+    
+    function addChatMessage(sender, message, type, isTyping = false) {
+        const container = document.getElementById('chatContainer');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-bubble ${type === 'user' ? 'text-end' : ''}`;
+        messageDiv.innerHTML = `<small><strong>${sender}:</strong> ${message}</small>`;
+        
+        if (isTyping) {
+            messageDiv.id = 'typingIndicator';
+            messageDiv.innerHTML += ' <span class="spinner-border spinner-border-sm"></span>';
+        }
+        
+        container.appendChild(messageDiv);
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    function removeTypingIndicator() {
+        const indicator = document.getElementById('typingIndicator');
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+    
+    // Enter key support for chat
+    document.getElementById('agentInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+    
+    // Initialize
+    updateDomainInfo();
+    
+    // Form submission enhancement
+    document.getElementById('dataForm').addEventListener('submit', function(e) {
+        const btn = document.getElementById('generateBtn');
+        btn.innerHTML = '🔄 Generating... <span class="spinner-border spinner-border-sm"></span>';
+        btn.disabled = true;
+    });
 </script>
 {% endblock %}
