@@ -2,7 +2,7 @@
 
 **A secure, scalable AI-powered synthetic data generator for developers and data scientists**
 
-![SynthGen Screenshot](https://raw.githubusercontent.com/Jerryblessed/SynthGen/main/assets/screenshot.png)
+![SynthGen Screenshot]([https://raw.githubusercontent.com/Jerryblessed/SynthGen/main/assets/screenshot.png](https://raw.githubusercontent.com/Jerryblessed/SynthGen/refs/heads/main/presentation/architectual_diagram.png?token=GHSAT0AAAAAADNAGIMHZXIBPVWX3KP4EVVQ2HNA4BQ))
 
 ---
 
