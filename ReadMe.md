@@ -123,7 +123,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 ## 🙌 Credits
 
-Developed by [Jeremiah Ope](https://github.com/Jerryblessed) for the AWS GenAI Hackathon 2025.
+Developed by [Team Syntgen](https://github.com/Jerryblessed) for the AWS AI Agent Global Hackathon 2025.
 
 ---
 
