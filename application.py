@@ -25,15 +25,15 @@ application.secret_key = os.urandom(24)
 # AWS Configuration
 # ====================
 AWS_CONFIG = {
-    'access_key': 'AKIA6FIQDWZWJOPKXKHE',
-    'secret_key': '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',
+    'access_key': '.........',
+    'secret_key': '........',
     'region': 'us-east-1'  # Changed to us-east-1 for Bedrock
 }
 
 # Cognito Configuration
 USER_POOL_ID = "eu-north-1_8nOgsOGhF"
-CLIENT_ID = "53loo229e76aj0kq99rqlu33ea"
-CLIENT_SECRET = "1h5540a3siu47d8bhee6onerk6734j7l0tlfr6s6elf4hqfb2dej"
+CLIENT_ID = "........."
+CLIENT_SECRET = ".........."
 COG_DOMAIN = f"https://cognito-idp.eu-north-1.amazonaws.com/{USER_POOL_ID}"
 
 # ====================
