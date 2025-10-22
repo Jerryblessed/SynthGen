@@ -1,4 +1,3 @@
-# Imports
 import os
 import json
 import csv
@@ -26,15 +25,14 @@ application.secret_key = os.urandom(24)
 # ====================
 AWS_CONFIG = {
     'access_key': 'AKIA6FIQDWZWJOPKXKHE',
-    'secret_key': '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',
-    'region': 'eu-north-1'  # Changed to us-east-1 for Bedrock
+    'secret_key': 'amcBhp4lHmckJqoDsHzqCsnyLD1007Qh73NQt3ap',
+    'region': 'us-east-1'  # Changed to us-east-1 for Bedrock
 }
 
 # Cognito Configuration
-# USER_POOL_ID = "eu-north-1_8nOgsOGhF"
-USER_POOL_ID = "eu-north-1_Ex4QZ9tGZ"
-CLIENT_ID = "3jsgcnepuj7qggho8iq4usl2im"
-CLIENT_SECRET = "6dkbhvtuqtuborosg84bjnc2bn916bunloi4ra43b652u8pue98"
+USER_POOL_ID = "eu-north-1_8nOgsOGhF"
+CLIENT_ID = "53loo229e76aj0kq99rqlu33ea"
+CLIENT_SECRET = "1h5540a3siu47d8bhee6onerk6734j7l0tlfr6s6elf4hqfb2dej"
 COG_DOMAIN = f"https://cognito-idp.eu-north-1.amazonaws.com/{USER_POOL_ID}"
 
 # ====================
